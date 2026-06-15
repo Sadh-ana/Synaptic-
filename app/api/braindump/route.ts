@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     const { text } = await req.json();
 
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash-lite',
     });
 
     const prompt = `Analyze this brain dump and categorize it into an Eisenhower Matrix.
