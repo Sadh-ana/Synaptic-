@@ -2,16 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-const model = genAI.getGenerativeModel({
-  model: 'gemini-2.5-flash',
-});
 
 export async function POST(req: NextRequest) {
   try {
     const { videoId, url } = await req.json();
 
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+    });
+
     let transcript = '';
-    let title = 'YouTube Roadmap';
 
     try {
       const pageRes = await fetch(
@@ -24,12 +24,6 @@ export async function POST(req: NextRequest) {
       );
 
       const html = await pageRes.text();
-
-      const titleMatch = html.match(
-        /<title>(.+?) - YouTube<\/title>/
-      );
-
-      if (titleMatch) title = titleMatch[1];
 
       const captionMatch = html.match(
         /"captionTracks":\[{"baseUrl":"([^"]+)"/
@@ -57,8 +51,8 @@ export async function POST(req: NextRequest) {
           .join(' ')
           .slice(0, 6000);
       }
-    } catch {
-      transcript = `Video about: ${url}`;
+    } catch (err) {
+      console.error('Transcript fetch failed:', err);
     }
 
     const prompt = `Extract 5-8 actionable steps from this video.
@@ -66,18 +60,18 @@ export async function POST(req: NextRequest) {
 Return ONLY valid JSON:
 
 {
-  "title": "Short roadmap title",
+  "title": "Roadmap Title",
   "steps": [
     {
       "order": 1,
-      "title": "Step title",
-      "description": "What to do (1-2 sentences)"
+      "title": "Step Title",
+      "description": "What to do"
     }
   ]
 }
 
 Transcript:
-${transcript || `YouTube video: ${url}`}`;
+${transcript || url}`;
 
     const result = await model.generateContent(prompt);
     const raw = result.response.text();
@@ -88,19 +82,20 @@ ${transcript || `YouTube video: ${url}`}`;
       data = JSON.parse(raw);
     } catch {
       const match = raw.match(/\{[\s\S]*\}/);
-      data = JSON.parse(match?.[0] || '{}');
+      data = match ? JSON.parse(match[0]) : {};
     }
 
-    return NextResponse.json({
-      ...data,
-      title: data.title || title,
-    });
+    return NextResponse.json(data);
   } catch (error: any) {
     console.error(error);
 
     return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
+      {
+        error: error?.message || 'Failed to process video',
+      },
+      {
+        status: 500,
+      }
     );
   }
 }
