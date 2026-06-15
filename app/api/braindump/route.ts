@@ -1,37 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+const model = genAI.getGenerativeModel({
+  model: 'gemini-2.5-flash',
+});
 
 export async function POST(req: NextRequest) {
   try {
     const { text } = await req.json();
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      messages: [{
-        role: 'user',
-        content: `Analyze this brain dump and categorize into Eisenhower Matrix. Return ONLY valid JSON, no markdown:
+
+    const prompt = `Analyze this brain dump and categorize into Eisenhower Matrix.
+
+Return ONLY valid JSON:
+
 {
   "urgent-important": [{"title": "...", "description": "...", "deadline": "YYYY-MM-DD or null", "tags": ["..."]}],
-  "not-urgent-important": [...],
-  "urgent-not-important": [...],
-  "not-urgent-not-important": [...]
+  "not-urgent-important": [],
+  "urgent-not-important": [],
+  "not-urgent-not-important": []
 }
 
-Today is ${new Date().toISOString().split('T')[0]}. Each quadrant max 5 items.
+Today is ${new Date().toISOString().split('T')[0]}.
+Maximum 5 items per quadrant.
 
-Brain dump: ${text}`
-      }],
-    });
+Brain dump:
+${text}`;
 
-    const raw = (response.content[0] as any).text;
+    const result = await model.generateContent(prompt);
+    const raw = result.response.text();
+
     let matrix;
-    try { matrix = JSON.parse(raw); }
-    catch { const m = raw.match(/\{[\s\S]*\}/); matrix = JSON.parse(m![0]); }
+
+    try {
+      matrix = JSON.parse(raw);
+    } catch {
+      const match = raw.match(/\{[\s\S]*\}/);
+      matrix = JSON.parse(match?.[0] || '{}');
+    }
 
     return NextResponse.json({ matrix });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error(error);
+
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500 }
+    );
   }
 }
